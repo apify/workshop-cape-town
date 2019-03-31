@@ -1,4 +1,4 @@
-Cape Town workshop - Building IMDB.com crawler
+# Cape Town workshop - Building IMDB.com crawler
 
 ## Prerequisites
 
