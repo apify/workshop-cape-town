@@ -1,13 +1,7 @@
 const Apify = require('apify');
+const tools = require('./tools');
+const { REQUEST_LABELS } = require('./consts');
 
-const REQUEST_LABELS = {
-    START_URL: 'START_URL',
-    SEARCH: 'SEARCH',
-    TITLE: 'TITLE',
-};
-
-const SEARCH_PURLS = ['https://www.imdb.com/search/title[.*]'];
-const TITLE_PURLS = ['https://www.imdb.com/title/[.*]'];
 
 Apify.main(async () => {
     // Apify.openRequestQueue() is a factory to get a preconfigured RequestQueue instance.
@@ -28,13 +22,13 @@ Apify.main(async () => {
 
         // Here you can set options that are passed to the Apify.launchPuppeteer() function.
         // For example, you can set "slowMo" to slow down Puppeteer operations to simplify debugging
-        launchPuppeteerOptions: { slowMo: 500, headless: true },
+        launchPuppeteerOptions: { slowMo: 0, headless: true },
 
         // Stop crawling after several pages
         maxRequestsPerCrawl: 1000,
 
         // Limit the concurrency
-        maxConcurrency: 1,
+        maxConcurrency: 100,
 
         // This function will be called for each URL to crawl.
         // Here you can write the Puppeteer scripts you are familiar with,
@@ -45,79 +39,17 @@ Apify.main(async () => {
         handlePageFunction: async ({ request, page }) => {
             console.log(`Processing ${request.url} (label: ${request.userData.label})`);
 
-            // Enqueue the titles.
-            await Apify.utils.enqueueLinks({
-                page,
-                requestQueue,
-                pseudoUrls: TITLE_PURLS,
-                selector: 'a',
-                userData: {
-                    label: REQUEST_LABELS.TITLE,
-                },
-            });
-
-            // Enqueue searches.
-            await Apify.utils.enqueueLinks({
-                page,
-                requestQueue,
-                pseudoUrls: SEARCH_PURLS,
-                selector: 'a',
-                userData: {
-                    label: REQUEST_LABELS.SEARCH,
-                },
-            });
-
-            let data;
+            await tools.enqueueTitles(page, requestQueue);
+            await tools.enqueueSearches(page, requestQueue);
 
             if (request.userData.label === REQUEST_LABELS.TITLE) {
                 await Apify.utils.puppeteer.injectJQuery(page);
 
-                data = await page.evaluate(() => {
-                    // Extract an array of movie actors.
-                    const starsWrapperEl = $('h4:contains("Stars:")').parent();
-                    const starsElements = starsWrapperEl.find('a').toArray();
-                    const stars = starsElements.map((el) => $(el).text());
-
-                    // Extract additional data and return them as an object.
-                    return {
-                        title: $('h1').text(),
-                        director: $('h4:contains("Director:"),h4:contains("Directors:")').next().text(),
-                        writers: $('h4:contains("Writer:"),h4:contains("Writers:")').next().text(),
-                        stars,
-                        rating: $('span[itemprop="ratingValue"]').text()
-                    };
-                });
+                const data = await page.evaluate(tools.extractActorData);
                 data.url = request.url;
-                data.reviews = [];
-
-                const reviewsButtonHandle = await page.$('.titleReviewBar .titleReviewbarItemBorder a:first-child');
-                if (reviewsButtonHandle) {
-                    request.userData.hasReviewsButton = true;
-                    await reviewsButtonHandle.click();
-                    await page.waitForNavigation({
-                        waitUntil: 'domcontentloaded',
-                    });
-                    const reviews = await page.$$eval('.imdb-user-review', (elements) => {
-                        return elements.map((el) => {
-                            const ratingEl = el.querySelector('.rating-other-user-rating');
-                            const commentEl = el.querySelector('.content .text');
-                            if (!ratingEl || !commentEl) return;
-
-                            return {
-                                rating: ratingEl.innerText,
-                                comment: commentEl.innerText,
-                            };
-                        });
-                    });
-
-                    data.reviews = reviews.filter(review => !!review);
-                }
+                data.reviews = await tools.handleReviews(page, request);
+                await Apify.pushData({ data });
             }
-
-            await Apify.pushData({
-                '#request': request,
-                data,
-            });
         },
 
         // This function is called if the page processing failed more than maxRequestRetries+1 times.
