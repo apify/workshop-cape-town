@@ -1,0 +1,7 @@
+{
+	"name": "workshop-cape-town",
+	"version": "0.0",
+	"buildTag": "latest",
+	"env": null,
+	"template": "puppeteer_crawler"
+}
