@@ -22,7 +22,7 @@ Apify.main(async () => {
 
         // Here you can set options that are passed to the Apify.launchPuppeteer() function.
         // For example, you can set "slowMo" to slow down Puppeteer operations to simplify debugging
-        launchPuppeteerOptions: { slowMo: 0, headless: true },
+        launchPuppeteerOptions: { slowMo: 100, headless: false },
 
         // Stop crawling after several pages
         maxRequestsPerCrawl: 1000,

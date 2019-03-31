@@ -1,5 +1,5 @@
 const Apify = require('apify');
-const { REQUEST_LABELS, SEARCH_PURLS, TITLE_PURLS } = require('./consts');
+const { REQUEST_LABELS, SEARCH_PURL, TITLE_PURL } = require('./consts');
 
 exports.extractActorData = () => {
     // Extract an array of movie actors.
@@ -45,22 +45,32 @@ function extractReviews(elements) {
 }
 
 exports.enqueueTitles = async (page, requestQueue) => {
-    return Apify.utils.enqueueLinks({
-        page,
-        requestQueue,
-        pseudoUrls: TITLE_PURLS,
-        selector: 'a',
-        userData: {
-            label: REQUEST_LABELS.TITLE,
-        },
+    const urls = await page.$$eval('a', (links) => {
+        return links
+            .map(link => link.href)
+            .filter(href => !!href)
+            .map(url => url.split('?')[0]);
     });
+
+    const titleUrls = urls.filter(url => TITLE_PURL.matches(url));
+
+    for (let url of titleUrls) {
+        const request = new Apify.Request({
+            url,
+            userData: {
+                label: REQUEST_LABELS.TITLE,
+            },
+        });
+
+        await requestQueue.addRequest(request, { forefront: true });
+    }
 };
 
 exports.enqueueSearches = async (page, requestQueue) => {
     return Apify.utils.enqueueLinks({
         page,
         requestQueue,
-        pseudoUrls: SEARCH_PURLS,
+        pseudoUrls: [SEARCH_PURL],
         selector: 'a',
         userData: {
             label: REQUEST_LABELS.SEARCH,
